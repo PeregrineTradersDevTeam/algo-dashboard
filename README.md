@@ -1,2 +1,4 @@
 # algo-dashboard
-Trading algorithms dashboard application  
+Trading algorithms dashboard application
+
+## Motivation
