@@ -1,0 +1,106 @@
+<template>
+  <div class="home">
+    <div class="home-content">
+      <div class="right-panel">
+        <InstanceStatusCounter location="right" />
+      </div>
+      <div class="home-header">
+        <TheHeader />
+      </div>
+      <div class="home-header" v-if="riskHeaderVisible">
+        <TheHeaderRisk />
+      </div>
+
+      <div class="matrix">
+        <TheMatrix />
+      </div>
+    </div>
+    <div class="home-footer">
+      <TheFooter />
+    </div>
+  </div>
+</template>
+
+<script>
+// @ is an alias to /src
+import TheHeader from "@/components/TheHeader.vue";
+import TheHeaderRisk from "@/components/TheHeaderRisk.vue";
+
+import TheFooter from "@/components/TheFooter.vue";
+import TheMatrix from "@/components/TheMatrix.vue";
+import InstanceStatusCounter from "@/components/InstanceStatusCounter.vue";
+
+export default {
+  name: "Home",
+  components: {
+    TheHeader,
+    TheHeaderRisk,
+
+    TheMatrix,
+    TheFooter,
+    InstanceStatusCounter,
+  },
+  computed: {
+    riskHeaderVisible() {
+      return this.$store.state.config.isRiskVisible;
+    },
+  },
+};
+</script>
+
+<style scoped>
+.home {
+  margin-left: 2px;
+  width: 100%;
+  height: 100%;
+}
+
+.home-header {
+  position: -webkit-sticky; /* Safari */
+  position: sticky;
+  top: 0px;
+  z-index: 1;
+}
+
+.home-content {
+}
+
+.matrix {
+  display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 2em;
+  width: 100%;
+  z-index: 1;
+}
+/* @media only screen and (max-width: 563px) {
+  .matrix {
+    width: 91%;
+  }
+} */
+
+.right-panel {
+  display: inline-block;
+  width: 6%;
+  position: fixed;
+  right: 5px;
+  top: 26px;
+  margin: 0px;
+  z-index: 1;
+}
+
+@media only screen and (min-width: 563px) {
+  .right-panel {
+    display: none;
+  }
+}
+
+.home-footer {
+  flex-shrink: 0;
+}
+
+.pnlchart {
+  width: 100vw;
+  width: 100%;
+}
+</style>

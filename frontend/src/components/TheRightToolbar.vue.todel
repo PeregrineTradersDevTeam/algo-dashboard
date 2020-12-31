@@ -1,0 +1,112 @@
+<template>
+  <div class="vertical-right-panel">
+    <slot></slot>
+    <div class="button-group">
+      <RollingButton
+        :title="['lst', 'min', 'max']"
+        :selected="groupMode"
+        @rolled="$emit('update:groupMode', $event)"
+      />
+      <RollingButton
+        :title="['ID', 'PnL', 'ST']"
+        :selected="matrixSortMode"
+        localStorageKey="matrix-sort"
+        @rolled="$emit('update:matrixSortMode', $event)"
+      />
+
+      <RollingButton
+        :title="['arrow-down', 'arrow-up']"
+        :selected="collapseMode"
+        mode="icon"
+        @rolled="$emit('update:collapseMode', $event)"
+      />
+      <slot name="footer"> </slot>
+    </div>
+  </div>
+</template>
+
+<script>
+import TheConfig from "@/components/TheConfig.vue";
+import RollingButton from "@/components/RollingButton.vue";
+import FloatingButton from "@/components/FloatingButton.vue";
+import MarketHolidaysModal from "@/components/MarketHolidaysModal.vue";
+import InstanceStatusCounter from "@/components/InstanceStatusCounter.vue";
+
+const lsSortModeKey = "matrix-sort";
+
+export default {
+  name: "TheRightToolbar",
+  components: {
+    TheConfig,
+    RollingButton,
+    FloatingButton,
+    MarketHolidaysModal,
+    InstanceStatusCounter,
+  },
+  props: {
+    groupMode: Number,
+    matrixSortMode: Number,
+    collapseMode: Number,
+  },
+  data: function() {
+    return {
+      groupTitles: ["lst", "min", "max"],
+      sortTitles: ["ID", "PnL", "ST"],
+      collapseIcons: ["arrow-down", "arrow-up"],
+    };
+  },
+  computed: {
+    viewMode: () => this.view.modes[this.view.current],
+  },
+
+  methods: {
+    saveConfig(event) {
+      this.$store.commit("setConfig", event);
+      if (event.isRiskVisible) {
+        if (this.view.modes.indexOf("risk") >= 0) {
+          return;
+        }
+        this.view.modes.push("risk");
+      } else {
+        if (this.view.modes.indexOf("risk") < 0) {
+          return;
+        }
+        if (this.view.mode == "risk") {
+          this.nextMode(true);
+        }
+        this.view.modes.splice(-1, 1);
+      }
+    },
+  },
+  created: () => {
+    let idx = parseInt(localStorage.getItem(lsSortModeKey));
+    if (idx && idx < this.sortTitles.length) {
+      this.$emit("update:matrixSortMode", idx);
+    }
+  },
+
+  mounted: function() {},
+  beforeDestroy() {},
+};
+</script>
+
+<!-- Add "scoped" attribute to limit CSS to this component only -->
+<style scoped>
+.vertical-right-panel {
+  display: block;
+  position: fixed;
+  right: 1px;
+  top: 54px;
+  width: 30px;
+  background-color: rebeccapurple;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  position: sticky;
+  z-index: 1;
+  background-color: rebeccapurple;
+}
+</style>

@@ -1,0 +1,28 @@
+.header-counter {
+  margin-left: 2px;
+  height: 25px;
+  width: 28px;
+  padding: 1px;
+  font-weight: bold;
+  font-size: 14px;
+  border: 1px;
+  border-style: solid;
+  border-color: black;
+}
+
+.header-counter-ok {
+  margin-left: 5px;
+  background-color: green;
+  color: white;
+}
+
+.header-counter-failed {
+  background-color: red;
+  color: white;
+}
+
+.header-counter-closed {
+  background-color: gray;
+  color: white;
+  margin-right: 10px;
+}

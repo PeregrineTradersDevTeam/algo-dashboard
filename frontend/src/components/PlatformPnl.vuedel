@@ -1,0 +1,211 @@
+<template>
+  <div class="chart-placeholder">
+    <div id="chart">
+      <apexchart type="line" height="194" :options="chartOptions" :series="series" />
+    </div>
+  </div>
+</template>
+
+<script>
+import VueApexCharts from "vue-apexcharts";
+function formatDate(date) {
+  var d = new Date(date),
+    /* month = "" + (d.getMonth() + 1),
+    day = "" + d.getDate(),
+    year = d.getFullYear(),*/
+    h = d.getHours(),
+    m = d.getMinutes(),
+    s = d.getSeconds();
+
+  //if (month < 10) month = "0" + month;
+  //if (day < 10) day = "0" + day;
+  if (h < 10) h = "0" + h;
+  if (m < 10) m = "0" + m;
+  if (s < 10) s = "0" + s;
+
+  return /*[year, month, day].join("-") + " " +*/ h + ":" + m + ":" + s;
+}
+
+export default {
+  name: "PlatformPnl",
+  components: {
+    apexchart: VueApexCharts
+  },
+  props: {
+    msg: String
+  },
+  data: function() {
+    return {
+      series: [
+        {
+          name: "PnL",
+          data: []
+        }
+      ],
+      chartOptions: {
+        chart: {
+          type: "line",
+          stacked: false,
+          zoom: {
+            type: "x",
+            enabled: true,
+            autoScaleYaxis: true
+          },
+          toolbar: {
+            show: true,
+            autoSelected: "zoom",
+            reset: false
+          },
+          stroke: {
+            width: 0
+          }
+        },
+        dataLabels: {
+          enabled: false
+        },
+        markers: {
+          size: 0
+        },
+
+        yaxis: {
+          labels: {
+            formatter: function(val) {
+              return val.toFixed(0);
+            }
+          },
+          title: {
+            text: "PnL"
+          }
+        },
+        xaxis: {
+          type: "datetime",
+          labels: {
+            formatter: function(val) {
+              return formatDate(val);
+            }
+          }
+        },
+        tooltip: {
+          shared: false,
+          y: {
+            formatter: function(val) {
+              return val.toFixed(0);
+            }
+          },
+          x: {
+            formatter: function(val) {
+              return formatDate(val);
+            }
+          }
+        }
+      },
+
+      pooling: null,
+
+      portfolio: new Map(),
+      config: {
+        strategy: {
+          BUOYANCY: {},
+          TREND_TRADER: {},
+          SCRIP: {},
+          PAIR_TRADER: {}
+        }
+      }
+    };
+  },
+  computed: {
+    sevcolor: function() {
+      return "red";
+    }
+  },
+  methods: {
+    /*   getPortfolioPnl: function() {
+      let that = this;
+      for (const st in this.config.strategy) {
+        console.log("strategy=", st);
+        let arr = this.portfolio.get(st);
+        let from = 0;
+        if (arr !== undefined) {
+          from = arr.length;
+        }
+        fetch("/api/portfolio/pnl?from=" + from + "&algoType=" + st)
+          .then(r => r.json())
+          .then(function(j) {
+            for (const algo in j) {
+              if (that.portfoliohas(algo)) {
+                arr = that.portfolio.get(algo);
+                arr.concat(j[algo]);
+                that.portfolio.set(algo, arr);
+              } else {
+                that.portfolio.set(algo, j[algo]);
+              }
+            }
+          });
+      }
+    },*/
+
+    addPnL(res) {
+      this.series[0].data.push(res);
+    },
+    getBUOYANCYPnl: function() {
+      const st = "BUOYANCY";
+      let that = this;
+      let from = 0;
+
+      if (this.series[0].data === undefined) {
+        this.series.data = [];
+      }
+
+      let arr = this.series[0].data;
+      if (arr.length > 0) {
+        from = arr.length;
+      }
+
+      fetch("/api/portfolio/pnl?from=" + from + "&algoType=" + st)
+        .then(r => r.json())
+        .then(res => {
+          if (res != null && res.length > 0) {
+            //that.series[0].data.push(...res);
+            for (let i = 0; i < res.length; i++) {
+              this.series[0].data.push(res[i]);
+            }
+            let lastpnl = res[res.length - 1][1];
+            that.$store.commit("setPnL", lastpnl);
+            //that.$set(that.series[0].dat);
+          }
+          that.chartOptions = that.g();
+        });
+    },
+    g: function() {
+      return this.chartOptions;
+    }
+  },
+
+  mounted: function() {
+    this.getBUOYANCYPnl();
+    let that = this;
+    this.polling = setInterval(function() {
+      that.getBUOYANCYPnl();
+    }, that.$store.getters.refreshInterval * 1000);
+  },
+
+  beforeDestroy() {
+    clearInterval(this.polling);
+    this.series.data = [];
+  }
+};
+</script>
+
+<!-- Add "scoped" attribute to limit CSS to this component only -->
+<style scoped>
+.chart-placeholder {
+  overflow: hidden;
+}
+
+.chart-placeholder1 {
+  width: 100%;
+  height: 360px;
+
+  margin-right: 2px;
+}
+</style>

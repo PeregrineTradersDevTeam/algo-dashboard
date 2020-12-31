@@ -1,0 +1,278 @@
+<template>
+  <div class="page-header columns" style="margin-bottom:0px;padding:0px;">
+    <div class="column level-left" style="margin-bottom:0px;padding:0px;">
+      <b-field
+        grouped
+        group-multiline
+        style="margin-bottom:0px;padding:0px; height:30px"
+      >
+        <b-taglist attached style="margin-bottom:0px;padding:0px;">
+          <b-tag type="is-dark" class="hider">zone</b-tag>
+          <b-tag type="is-info" class="tight">{{ zone }}</b-tag>
+        </b-taglist>
+        <div class="separator" />
+
+        <b-taglist attached style="margin-bottom:0px;padding:0px;">
+          <b-tag type="is-dark" class="hider">site</b-tag>
+          <b-tag type="is-success" class="tight">{{ site }}</b-tag>
+        </b-taglist>
+        <div class="separator" />
+
+        <b-taglist attached style="margin-bottom:0px;padding:0px;">
+          <b-tag type="is-dark" class="hider">env</b-tag>
+          <b-tag type="is-success" class="tight">{{ env }}</b-tag>
+        </b-taglist>
+        <div class="separator" />
+
+        <b-taglist attached style="margin-bottom:0px;padding:0px;">
+          <b-tag type="is-dark" class="hider">platform</b-tag>
+          <b-tag type="is-primary" class="tight">{{ platform }}</b-tag>
+        </b-taglist>
+        <div class="separator" />
+
+        <b-taglist attached style="margin-bottom:0px;padding:0;">
+          <b-tag type="is-dark" class="hider tight">Target</b-tag>
+          <b-tag type="is-warning" class="tight">{{ ppnl }}</b-tag>
+        </b-taglist>
+        <div class="separator" />
+
+        <div
+          v-bind:class="[
+            'pnl-counter is-pulled-right',
+            lastPnL >= 0 ? 'pnl-positive' : 'pnl-negative',
+          ]"
+        >
+          PnL: {{ lastPnL }}
+        </div>
+        <div class="separator" />
+        <InstanceStatusCounter direction="horizontal-counter-set" />
+        <div class="separator" />
+
+        <div class="buttons" style="float:right;margin-bottom:0px;padding:0px;">
+          <b-button
+            class="is-small is-success short-button-text"
+            v-on:click="launch"
+            >L</b-button
+          >
+          <b-button
+            class="is-small is-danger short-button-text"
+            v-on:click="confirm"
+            >C</b-button
+          >
+          <b-button
+            class="is-small is-success full-button-text"
+            v-on:click="launch"
+            >Launcher</b-button
+          >
+          <b-button class="is-small full-button-text" v-on:click="update"
+            >Update</b-button
+          >
+          <b-button
+            class="is-small is-danger full-button-text"
+            v-on:click="confirm"
+            >Close ALL</b-button
+          >
+        </div>
+      </b-field>
+    </div>
+
+    <LauncherModalN ref="launcher" />
+    <PlatformPnLModal ref="pnlModal" />
+  </div>
+</template>
+
+<script>
+import "buefy/dist/buefy.css";
+import { ToastProgrammatic as Toast } from "buefy";
+import InstanceStatusCounter from "@/components/InstanceStatusCounter.vue";
+import PlatformPnLModal from "@/components/PlatformPnLModal.vue";
+import LauncherModalN from "@/components/LauncherModalN.vue";
+
+export default {
+  name: "TheHeader",
+  components: {
+    InstanceStatusCounter,
+    PlatformPnLModal,
+    LauncherModalN,
+  },
+  data: function() {
+    return {
+      zone: "",
+      site: "",
+      platform: "",
+      env: "",
+      ppnl: "",
+    };
+  },
+  computed: {
+    lastPnL: function() {
+      return this.$store.state.lastPnL;
+    },
+  },
+
+  methods: {
+    showPnLModal: function() {
+      this.$refs.pnlModal.showModal();
+    },
+    launchBackup: function() {
+      this.$refs.launcher.showModal({
+        title: "Algo Launcher",
+        buttonTitle: "Start ALL",
+        action: "launch",
+      });
+    },
+    launch: function() {
+      this.$refs.launcher.showModal(
+        "Algo Launcher",
+        "Start ALL",
+        "launch",
+        this.$store.getters.holidayToday
+      );
+    },
+
+    update: function() {
+      this.$refs.launcher.showModal(
+        "Algo Updater",
+        "Send Update",
+        "update",
+        this.$store.getters.holidayToday
+      );
+    },
+
+    confirm: function() {
+      this.$buefy.dialog.confirm({
+        message: "Close all instances?",
+        focusOn: "confirm",
+        animation: "",
+        type: "is-danger",
+        onConfirm: () => this.closeAll(),
+      });
+    },
+
+    closeAll: function() {
+      fetch("/api/close-all", { method: "POST" })
+        .then((r) => r.json())
+        .then(function(j) {
+          if (j.received === true) {
+            Toast.open({
+              message: "<strong>CLOSE ALL</strong> received by server!",
+              type: "is-success",
+              position: "is-top-right",
+            });
+          } else {
+            Toast.open({
+              message:
+                "<strong>CLOSE ALL</strong>  has not received by server!",
+              type: "is-danger",
+              position: "is-top-right",
+            });
+          }
+        });
+    },
+    getCofig: function() {
+      let that = this;
+      fetch("/api/config")
+        .then((r) => r.json())
+        .then(function(j) {
+          that.zone = j["zone"];
+          that.platform = j["platform"];
+          that.site = j["site"];
+          that.env = j["env"];
+          that.ppnl = j["ppnl"];
+          that.$store.commit("setPlatformBuild", j["build"]);
+        });
+      document.title = this.env + ":" + this.zone + ":" + this.platform;
+    },
+  },
+  created: () => {
+    document.title = "Dashboard";
+  },
+
+  mounted: function() {
+    this.getCofig();
+    let that = this;
+    this.pooling = setInterval(function() {
+      that.getCofig();
+    }, 30000);
+  },
+  beforeDestroy() {
+    clearInterval(this.pooling);
+  },
+};
+</script>
+
+<!-- Add "scoped" attribute to limit CSS to this component only -->
+<style scoped>
+.page-header {
+  vertical-align: middle;
+  margin: 2px 2px 0 2px;
+  background-color: #1e1e1e;
+  /* z-index: 10px; */
+}
+
+.portfolio-pnl {
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.key-buttons {
+  float: right;
+}
+.separator {
+  width: 20px;
+}
+
+.short-button-text {
+  display: none;
+}
+
+@media only screen and (max-width: 1040px) {
+  .separator {
+    width: 2px;
+  }
+}
+
+@media only screen and (max-width: 804px) {
+  .hider {
+    display: none;
+  }
+}
+
+@media only screen and (max-width: 579px) {
+  .tight {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+}
+
+@media only screen and (max-width: 894px) {
+  .short-button-text {
+    display: inline-block;
+  }
+  .full-button-text {
+    display: none;
+  }
+  .tight {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+}
+.pnl-counter {
+  height: 24px;
+  padding: 1px 3px 1px 3px;
+  font-weight: bold;
+  font-size: 14px;
+  border: 1px;
+  border-style: solid;
+  border-color: black;
+  color: white;
+  margin-top: 2px;
+}
+.pnl-positive {
+  background-color: green;
+}
+
+.pnl-negative {
+  background-color: red;
+}
+</style>

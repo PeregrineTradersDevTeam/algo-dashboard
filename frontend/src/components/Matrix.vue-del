@@ -1,0 +1,714 @@
+<template>
+  <div class="main-area">
+    <div class="matrix" v-touch:swipe="swipeHandler">
+      <GroupPnLWidget :mode="group.mode" :hideChart="group.hideChart" />
+
+      <PnLChartWidget
+        title="Platform"
+        codes="PNL:BUOYANCY"
+        :renderSeq="renderSeq"
+        :width="185"
+        :height="84"
+      />
+      <PlatformWidget
+        ref="modal"
+        title="Platform Widget"
+        :isStopped="isPlatformStopped"
+      />
+      <div
+        class="cell"
+        v-bind:style="{
+          'background-color': config.strategyBackgroundColor[item.atype],
+        }"
+        v-for="item in matrix"
+        v-bind:key="item.id"
+        @mouseover="hover = true"
+        @mouseleave="hover = false"
+        :class="{ cellhovered: hover }"
+      >
+        <div
+          class="cell-header"
+          v-bind:style="{
+            'background-color': config.instanceStatusColor[item.status],
+          }"
+        >
+          <a class="cell-product-id" v-on:click="showModal(item.id)">{{
+            item.id +
+              (getIntanceAttr(item.id, "pnlGroup")
+                ? ":" + getIntanceAttr(item.id, "pnlGroup")
+                : "")
+          }}</a>
+          <span class="cell-subheader">{{ item.atypeshort }}</span>
+          <b-dropdown aria-role="list">
+            <font-awesome-icon icon="caret-down" slot="trigger" />
+            <b-dropdown-item
+              aria-role="listitem"
+              v-on:click="downloadCSV(item.id)"
+              >Download CSV</b-dropdown-item
+            >
+            <b-dropdown-item
+              aria-role="listitem"
+              v-on:click="downloadCurve('M:' + item.id + '.l')"
+              >Download price curve</b-dropdown-item
+            >
+            <b-dropdown-item
+              aria-role="listitem"
+              v-on:click="downloadCurve('M:' + item.id + '.pnl')"
+              >Download PnL curve</b-dropdown-item
+            >
+          </b-dropdown>
+
+          <a class="close-button" v-on:click="closeAlgo(item.id)">X</a>
+          <span v-bind:class="['cell-pnl', pnlStyle(item.pnl)]">
+            {{ item.pnl.toFixed(2) }}
+          </span>
+          <span class="currency">
+            {{ getIntanceAttr(item.id, "currencyCode") }}
+          </span>
+        </div>
+
+        <div class="figure-row" v-if="!isMinimaized">
+          <div class="risk-widget" v-if="currmode == 'risk'">
+            <div class="figure f-top f-bottom">
+              <b-tooltip label="Position Delta">
+                {{ item.pd }}
+              </b-tooltip>
+            </div>
+            <div class="figure f-top f-left f-bottom">
+              <b-tooltip label="Num of Securities">
+                {{ item.ns }}
+              </b-tooltip>
+            </div>
+            <div class="figure f-top f-left f-bottom">
+              <b-tooltip label="Position Delta Limit">{{ item.pl }}</b-tooltip>
+            </div>
+          </div>
+          <div class="lpchart" v-else-if="currmode != ''">
+            <img
+              style="padding-top:1px"
+              v-bind:src="
+                '/api/charter/M:' + item.id + '/img?w=184&h=68&a=' + currmode
+              "
+              width="184"
+              height="68"
+              @click="showLarge(item.id, 'M:' + item.id)"
+            />
+          </div>
+          <div v-else>
+            <div class="figure f-top">
+              <b-tooltip label="Position Twap">{{ item.pt }}</b-tooltip>
+            </div>
+            <div class="figure f-top f-left">
+              <b-tooltip label="Position Hedge">{{ item.ph }}</b-tooltip>
+            </div>
+            <div class="figure f-top f-left">
+              <b-tooltip label="Position Option">{{ item.po }}</b-tooltip>
+            </div>
+            <div class="figure f-top">
+              <b-tooltip label="Bid">{{ item.b }}</b-tooltip>
+            </div>
+            <div class="figure f-top f-left">
+              <b-tooltip label="Ask">{{ item.a }}</b-tooltip>
+            </div>
+            <div class="figure f-top f-left">
+              <b-tooltip label="Last">{{ item.l }}</b-tooltip>
+            </div>
+            <div class="figure f-top">
+              <b-tooltip label="Option Bid">{{ item.ob }}</b-tooltip>
+            </div>
+            <div class="figure f-top f-left">
+              <b-tooltip label="Option Ask">{{ item.oa }}</b-tooltip>
+            </div>
+            <div class="figure f-top f-left">
+              <b-tooltip label="Share Average Hedge Price">
+                {{ item.sahp }}
+              </b-tooltip>
+            </div>
+            <div class="figure f-top f-bottom">
+              <b-tooltip label="Target Quantity Per Period">
+                {{ item.tqpp }}
+              </b-tooltip>
+            </div>
+            <div class="figure f-top f-bottom f-left">
+              <b-tooltip label="Target Position Flow Twap">
+                {{ item.tpft }}
+              </b-tooltip>
+            </div>
+            <div class="figure f-top f-bottom f-left">
+              <b-tooltip label="Remaining Shots">{{ item.rs }}</b-tooltip>
+            </div>
+            <div class="chart-cell" @click="showLarge(item.id, 'M:' + item.id)">
+              <font-awesome-icon icon="chart-area" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <InstanceModal ref="modal" />
+      <InstanceChart ref="instanceChartModal" />
+      <div class="right-toolbar">
+        <SortButton :title="group.title" @click="changeGroupMode" />
+        <SortButton :title="sort.title" @click="changeSort" />
+        <FloatingButton :pressed.sync="isMinimaized" />
+        <TheConfig ref="configModal" @save="saveConfig" />
+        <SortButton
+          icon="cog"
+          @click="$refs.configModal.showModal($store.getters.config)"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import InstanceModal from "@/components/InstanceModal.vue";
+import PnLChartWidget from "@/components/PnLChartWidget.vue";
+import PlatformWidget from "@/components/PlatformWidget.vue";
+import { ToastProgrammatic as Toast } from "buefy";
+import InstanceChart from "@/components/InstanceChart.vue";
+import FloatingButton from "@/components/FloatingButton.vue";
+import TheConfig from "@/components/TheConfig.vue";
+import SortButton from "@/components/SortButton.vue";
+import GroupPnLWidget from "@/components/GroupPnLWidget.vue";
+
+const largeModes = "l,op,lo,hi,pnl";
+
+export default {
+  name: "InstanceMatrix",
+  components: {
+    InstanceModal: InstanceModal,
+    PlatformWidget: PlatformWidget,
+    PnlChartWidget: PnlChartWidget,
+    InstanceChart: InstanceChart,
+    FloatingButton: FloatingButton,
+    SortButton: SortButton,
+    GroupPnLWidget: GroupPnLWidget,
+  },
+  props: {
+    msg: String,
+  },
+  data: function() {
+    return {
+      matrixMode: ["", "pnl,op,lo,hi,l"],
+      currmode: "",
+      renderSeq: 0,
+      lpmode: false,
+      hover: false,
+      matrix: [],
+      matrixi: {},
+      portfolio: new Map(),
+      group: {
+        title: "lst",
+        titles: ["lst", "min", "max"],
+        modes: ["", "min", "max"],
+        mode: "",
+        hideChart: true,
+      },
+      sort: {
+        title: "ID", // current button title
+        mode: "id", // current matrix sort mode
+        modes: ["id", "pnl", "status"], // supported sort modes
+        titles: ["ID", "PnL", "ST"], //
+      },
+      config: {
+        strategy: {
+          BUOYANCY: {},
+          TREND_TRADER: {},
+          SCRIP: {},
+          PAIR_TRADER: {},
+        },
+        strategyBackgroundColor: {
+          BUOYANCY: "silver",
+          TREND_TRADER: "#E8CBED",
+          SCRIP: "",
+          PAIR_TRADER: "",
+        },
+        instanceStatusColor: {},
+      },
+      refreshInterval: 1,
+      poolingM: null,
+      poolingI: null,
+      isPlatformStopped: true,
+      failedIntances: {},
+      isMinimaized: false,
+      isConfig: false,
+    };
+  },
+  computed: {
+    sevcolor: function() {
+      return "red";
+    },
+  },
+  methods: {
+    saveConfig(event) {
+      console.info("saveConfig", event);
+      this.$store.commit("setConfig", event);
+      if (event.isRiskVisible) {
+        if (this.matrixMode.indexOf("risk") >= 0) {
+          return;
+        }
+        this.matrixMode.push("risk");
+      } else {
+        if (this.matrixMode.indexOf("risk") < 0) {
+          return;
+        }
+        if (this.currmode == "risk") {
+          this.nextMode(true);
+        }
+        this.matrixMode.splice(-1, 1);
+      }
+    },
+    showLarge: function(shortcode, code) {
+      this.$refs.instanceChartModal.showModal(shortcode, code, largeModes);
+    },
+
+    changeSort: function() {
+      let idx = this.sort.modes.indexOf(this.sort.mode);
+      idx++;
+      if (idx == this.sort.modes.length) {
+        idx = 0;
+      }
+      this.sort.mode = this.sort.modes[idx];
+      this.sort.title = this.sort.titles[idx];
+      this.getMatrixM();
+      localStorage.setItem("matrix-sort", this.sort.mode);
+    },
+
+    changeGroupMode: function() {
+      let idx = this.group.modes.indexOf(this.group.mode);
+      idx++;
+      if (idx == this.group.modes.length) {
+        idx = 0;
+      }
+      this.group.mode = this.group.modes[idx];
+      this.group.title = this.group.titles[idx];
+    },
+
+    swipeHandler: function(direction) {
+      switch (direction) {
+        case "left":
+          this.nextMode(false);
+          break;
+        case "right":
+          this.nextMode(true);
+          break;
+        default:
+          break;
+      }
+    },
+    nextMode: function(forward) {
+      let idx = this.matrixMode.indexOf(this.currmode);
+      if (idx < 0) {
+        this.currmode = this.matrixMode[0];
+        return;
+      }
+      idx += forward ? 1 : -1;
+
+      if (idx == this.matrixMode.length) {
+        idx = 0;
+      } else if (idx < 0) {
+        idx = this.matrixMode.length - 1;
+      }
+      this.currmode = this.matrixMode[idx];
+    },
+
+    pnlStyle: function(pnl) {
+      if (pnl < 0) {
+        return "pnl-lost";
+      }
+
+      if (pnl > 0) {
+        return "pnl-ok";
+      }
+      return "";
+    },
+
+    getMatrixI: function() {
+      let that = this;
+      fetch("/api/matrix/i")
+        .then((r) => r.json())
+        .then(function(items) {
+          if (items) {
+            that.matrixi = {};
+            that.matrixi = items;
+          }
+        });
+    },
+
+    getIntanceAttr: function(id, attr) {
+      let i = this.matrixi[id];
+      if (i) {
+        if (i[attr]) {
+          return i[attr];
+        }
+      }
+      return "";
+    },
+
+    getMatrixM: function() {
+      let that = this;
+      fetch("/api/matrix/m?sort=" + that.sort.mode)
+        .then((r) => r.json())
+        .then(function(items) {
+          that.matrix = [];
+          let scnt = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+          that.isPlatformStopped = true;
+          for (let i in items) {
+            if (items[i].atype == "BUOYANCY") {
+              items[i]["atypeshort"] = "BU";
+            }
+            that.matrix.push(items[i]);
+            scnt[items[i].status]++;
+            if (items[i].status < 2) {
+              that.isPlatformStopped = false;
+            }
+            if (items[i].status == 3) {
+              if (!that.failedIntances[items[i].id]) {
+                that.failedIntances[items[i].id] = false;
+              }
+            }
+          }
+          that.$store.commit("setInstanceStatusCounter", scnt);
+        });
+    },
+
+    closeAlgo: function(code) {
+      fetch("/api/instance/" + code + "/stop", {
+        method: "POST",
+      })
+        .then((r) => r.json())
+        .then(function(j) {
+          let msg = "CLOSE <strong>" + code + "</strong> ";
+          if (j.received === true) {
+            Toast.open({
+              message: (msg += "received by server!"),
+              type: "is-success",
+              position: "is-top",
+            });
+          } else {
+            Toast.open({
+              message: (msg += "has not received by server!"),
+              type: "is-danger",
+              position: "is-top",
+            });
+          }
+        });
+    },
+    downloadCSV: function(code) {
+      window.open("/api/log/" + code + "/download");
+    },
+    downloadCurve: function(code) {
+      window.open("/api/charter/" + code + "/download");
+    },
+
+    showModal: function(id, activeTab = 0) {
+      this.$refs.modal.showModal({ id: id }, activeTab);
+    },
+
+    startRefreshMatrix: function() {
+      this.renderSeq++;
+      this.getMatrixM();
+      let that = this;
+      if (that.refreshInterval == 0) {
+        return;
+      }
+      if (this.timer !== undefined) {
+        clearTimeout(this.timer);
+      }
+      for (let k in this.failedIntances) {
+        if (this.failedIntances[k] == false) {
+          this.showModal(k, 1);
+          this.failedIntances[k] = true;
+          break;
+        }
+      }
+      this.timer = setTimeout(
+        that.startRefreshMatrix,
+        that.refreshInterval * 1000
+      );
+    },
+  },
+  created: function() {
+    this.config.instanceStatusColor = this.$store.getters.instanceStatusColor;
+    this.refreshInterval = this.$store.getters.refreshInterval;
+    this.startRefreshMatrix();
+  },
+  mounted: function() {
+    this.getMatrixI();
+    this.poolingI = setInterval(function() {
+      that.getMatrixI();
+    }, 30000);
+
+    this.sort.mode = localStorage.getItem("matrix-sort");
+    let idx = this.sort.modes.indexOf(this.sort.mode);
+    if (idx >= 0) {
+      this.sort.title = this.sort.titles[idx];
+    }
+
+    let that = this;
+    this.poolingM = setInterval(function() {
+      that.refreshInterval = that.$store.getters.refreshInterval;
+    }, 1000);
+
+    window.addEventListener("keydown", (e) => {
+      switch (e.code) {
+        case "Escape":
+          this.group.hideChart = !this.group.hideChart;
+          break;
+      }
+    });
+
+    window.addEventListener(
+      "keypress",
+      (e) => {
+        switch (e.code) {
+          case "KeyG":
+            that.changeGroupMode(true);
+            break;
+          case "KeyV":
+            that.nextMode(true);
+            break;
+          case "KeyS":
+            that.changeSort();
+            break;
+          case "KeyC":
+            that.isMinimaized = !that.isMinimaized;
+            break;
+          case "Digit1":
+            that.currmode = this.matrixMode[0];
+            break;
+          case "Digit2":
+            that.currmode = this.matrixMode[1];
+            break;
+          case "Digit3":
+            if (that.matrixMode.length == 3) {
+              that.currmode = this.matrixMode[2];
+            }
+            break;
+          default:
+            break;
+        }
+      },
+      { passive: true }
+    );
+  },
+
+  beforeDestroy() {
+    this.startRefreshMatrix(0);
+    clearInterval(this.poolingM);
+  },
+};
+</script>
+
+<!-- Add "scoped" attribute to limit CSS to this component only -->
+<style scoped>
+.matrix {
+}
+.cell {
+  width: 186px;
+  float: left;
+
+  margin-right: 2px;
+  margin-bottom: 1px;
+  display: block;
+}
+.cellhovered {
+  -webkit-transition-duration: 0.4s;
+  /* Safari */
+  transition-duration: 0.4s;
+  background-color: lightskyblue;
+}
+
+.cell:hover .cell-product-id {
+  color: blue;
+  text-decoration: underline;
+}
+
+.cell:hover .currency {
+  opacity: 1;
+}
+
+.cell-product-id {
+  display: inline-block;
+  color: black;
+  text-decoration: none;
+  width: 50px;
+  padding-left: 2px;
+}
+
+.cell-product-id:active {
+  color: yellow;
+}
+
+.cell-header {
+  font-size: 12px;
+  text-align: left;
+  height: 17px;
+}
+
+.cell-subheader {
+  display: inline-block;
+  color: darkslateblue;
+  font-size: 10px;
+}
+
+.cell:hover .cell-subheader {
+  color: black;
+}
+
+.cell-pnl {
+  float: right;
+  font-weight: bold;
+  padding-right: 2px;
+  height: 17px;
+  top: 1px;
+}
+
+.pnl-ok {
+  color: rgb(1, 101, 1);
+}
+
+.pnl-lost {
+  color: #c91a18;
+}
+
+.close-button {
+  font-size: 12px;
+  top: 0px;
+  width: 14px;
+  height: 17px;
+  float: right;
+  text-align: center;
+  vertical-align: middle;
+  background-color: transparent;
+  cursor: pointer;
+  color: black;
+  opacity: 0.2;
+}
+
+.close-button:hover {
+  color: white;
+  border-radius: 9px;
+  -webkit-transition-duration: 0.4s;
+  /* Safari */
+  transition-duration: 0.4s;
+  background-color: blue;
+  opacity: 1;
+}
+
+.chart-cell {
+  text-align: center;
+  opacity: 0.3;
+  width: 62px;
+  height: 14px;
+  float: left;
+  padding-right: 1px;
+}
+.chart-cell:hover {
+  opacity: 1;
+  cursor: pointer;
+  background-color: blue;
+  color: white;
+}
+
+.figure-row {
+  float: top;
+  text-align: right;
+  vertical-align: middle;
+  display: block;
+  border-color: 1px solid #2a292c;
+}
+
+.figure {
+  width: 62px;
+  height: 14px;
+  float: left;
+  padding-right: 1px;
+}
+
+.risk {
+  color: blueviolet;
+}
+
+.f-top {
+  border-top: 1px lightgray solid;
+}
+
+.f-right {
+  border-top: 1px lightgray solid;
+}
+
+.f-left {
+  border-left: 1px lightgray solid;
+}
+
+.f-bottom {
+  border-bottom: 1px lightgray solid;
+}
+
+.figure:hover {
+  background-color: blueviolet;
+  color: white;
+}
+.tag {
+  cursor: pointer;
+}
+.main-area {
+  float: left;
+}
+
+@media only screen and (max-width: 492px) {
+  .main-area {
+    width: 379px;
+    display: inline-block;
+  }
+}
+.lpchart {
+  text-align: left;
+  vertical-align: bottom;
+  padding-left: 1px;
+  margin: 0;
+  display: block;
+  height: 70px;
+  background-color: #363639;
+}
+
+.risk-widget {
+  margin: 0;
+  display: block;
+  height: 70px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: rgba(255, 255, 255, 0.6);
+  vertical-align: middle;
+}
+
+.risk-widget .f-top {
+  border-top: 1px rgba(0, 0, 0, 0.8) solid;
+}
+.risk-widget .f-left {
+  border-left: 1px rgba(0, 0, 0, 0.8) solid;
+}
+
+.risk-widget .f-bottom {
+  border-bottom: 1px rgba(0, 0, 0, 0.8) solid;
+}
+.risk-widget .f-right {
+  border-top: 1px rgba(0, 0, 0, 0.8) solid;
+}
+
+.right-toolbar {
+  position: absolute;
+  z-index: 1;
+  right: 1px;
+  top: 50%;
+  padding: 1px 1px 1px 1px;
+  margin-top: 1px;
+}
+
+.currency {
+  float: right;
+  height: 17px;
+  margin-right: 5px;
+  color: black;
+  opacity: 0.2;
+}
+</style>
